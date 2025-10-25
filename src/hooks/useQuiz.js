@@ -1,6 +1,22 @@
-// src/hooks/useQuiz.js
+/**
+ * src/hooks/useQuiz.js
+ * Custom hook to fetch quiz questions based on user parameters.
+ */
 import { useState, useEffect } from 'react';
 import { fetchQuestions } from '../api/trivia'; 
+
+/**
+ * Helper function to decode HTML entities (like &quot; or &#039;) from the API.
+ * This ensures the question text and answers display correctly.
+ * NOTE: Using a parser is the safest way to decode all entities.
+ * @param {string} str - The string to decode.
+ * @returns {string} The decoded string.
+ */
+function decodeHtml(str) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(str, 'text/html');
+    return doc.documentElement.textContent;
+}
 
 /**
  * Custom hook to fetch quiz questions based on user parameters.
@@ -13,38 +29,40 @@ export function useQuiz(params) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // useEffect runs whenever the 'params' object changes (i.e., when the quiz starts)
   useEffect(() => {
-    // We only fetch if params are provided (i.e., not null)
     if (!params) {
       setIsLoading(false);
       return; 
     }
 
     const loadQuestions = async () => {
-      // 1. Reset states before starting a new fetch
       setIsLoading(true);
       setError(null);
       setQuestions([]);
 
       try {
-        // 2. Call the API function from Week 1
         const fetchedQuestions = await fetchQuestions(
           params.amount, 
           params.categoryId, 
           params.difficulty
         );
         
-        // 3. Simple data transformation: Combine and randomize answers
+        // 1. Data Transformation: Decode and Shuffle Answers
         const formattedQuestions = fetchedQuestions.map(q => {
-            // Create an array of all answers
-            const allAnswers = [...q.incorrect_answers, q.correct_answer];
+            // Decode all strings from the API
+            const decodedQuestion = decodeHtml(q.question);
+            const decodedCorrectAnswer = decodeHtml(q.correct_answer);
+            const decodedIncorrectAnswers = q.incorrect_answers.map(ans => decodeHtml(ans));
             
-            // Randomize the order of the answers (a clean way to shuffle an array)
+            // Create an array of all answers and randomize the order
+            const allAnswers = [...decodedIncorrectAnswers, decodedCorrectAnswer];
             const shuffledAnswers = allAnswers.sort(() => Math.random() - 0.5);
             
             return {
                 ...q,
+                question: decodedQuestion,
+                correct_answer: decodedCorrectAnswer,
+                incorrect_answers: decodedIncorrectAnswers,
                 shuffled_answers: shuffledAnswers, // Store the randomized list
             };
         });
@@ -55,16 +73,13 @@ export function useQuiz(params) {
         console.error("Quiz Fetch Error:", err);
         setError(err.message);
       } finally {
-        // 4. Set loading to false once the operation is complete
         setIsLoading(false);
       }
     };
 
     loadQuestions();
     
-    // The dependency array ensures the effect runs only when 'params' changes.
   }, [params]); 
 
-  // The hook returns the essential data and status flags
   return { questions, isLoading, error };
 }
